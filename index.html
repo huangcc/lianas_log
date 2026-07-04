@@ -86,7 +86,13 @@
     .nc-btn.pause-btn.is-paused { background: #d4a843; color: white; border-color: #d4a843; }
     .nc-btn.done-btn { background: #f0f8f0; color: #4a8c6f; border-color: #b8d8c8; }
     .nc-btn:disabled { opacity: 0.35; cursor: default; }
+    .nc-btn.nap-start { background: #fff3e0; color: #a06828; border-color: #e8c88a; }
+    .nc-btn.bedtime-start { background: #f0edf8; color: #5c4b6e; border-color: #c8b8e0; }
     .nc-status { font-size: 12px; color: #8a8580; text-align: center; margin-top: 4px; height: 16px; }
+    .sleep-card.nap-active { border-color: #c27b3a; border-width: 2px; }
+    .sleep-card.bedtime-active { border-color: #6b5b8a; border-width: 2px; }
+    .status-badge.nap-badge { background: #fff3e0; color: #a06828; }
+    .status-badge.bedtime-badge { background: #f0edf8; color: #5c4b6e; }
 
     /* Quick Log */
     .quick-log { margin-top: 16px; }
@@ -113,6 +119,10 @@
     .ql-status { font-size: 13px; color: #4a8c6f; margin-top: 8px; text-align: center; }
     .ql-detail-row { display: none; }
     .ql-detail-row.visible { display: block; }
+    .ql-date-row { display: flex; gap: 6px; margin-bottom: 6px; }
+    .ql-date-btn { padding: 5px 14px; border-radius: 8px; border: 1px solid #ddd; background: #f8f7f5; font-size: 12px; color: #4a4540; cursor: pointer; transition: all 0.15s; }
+    .ql-date-btn.selected { background: #5c4b6e; color: white; border-color: #5c4b6e; }
+    .ql-time-input { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 15px; color: #2d2a26; background: #faf9f7; }
 
     /* Bottom sections */
     .bottom-sections { flex-shrink: 0; margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -290,17 +300,36 @@
         </div>
       </div>
 
+      <div style="margin-top: 16px;">
+        <div class="section-title">Active Sleep Session</div>
+        <div class="card sleep-card" id="sleepCard">
+          <div id="sleepContent">
+            <div class="no-session">No active sleep session</div>
+          </div>
+          <div class="sleep-controls" style="margin-top: 12px;">
+            <div class="nc-row" id="scStartRow">
+              <button class="nc-btn nap-start" onclick="sleepAction('nap_start')">&#x1F634; Start Nap</button>
+              <button class="nc-btn bedtime-start" onclick="sleepAction('bedtime')">&#x1F319; Bedtime</button>
+            </div>
+            <div class="nc-row" id="scEndRow" style="display:none">
+              <button class="nc-btn done-btn" id="scEnd" onclick="endSleepAction()">&#x2713; End</button>
+            </div>
+          </div>
+          <div class="nc-status" id="scStatus"></div>
+        </div>
+      </div>
+
       <div class="quick-log">
         <div class="section-title">Quick Log</div>
         <div class="card">
           <div class="ql-row">
             <div class="ql-label">What</div>
             <div class="ql-buttons" id="qlCategory">
-              <button class="ql-btn" onclick="selectCategory('pee_diaper','pee')">Pee</button>
-              <button class="ql-btn" onclick="selectCategory('poop_diaper','poop')">Poop</button>
-              <button class="ql-btn" onclick="selectCategory('mixed_diaper','both')">Both</button>
+              <button class="ql-btn" onclick="selectCategory('pee_diaper','pee diaper')">Pee</button>
+              <button class="ql-btn" onclick="selectCategory('poop_diaper','poop diaper')">Poop</button>
+              <button class="ql-btn" onclick="selectCategory('mixed_diaper','both diaper')">Both</button>
               <button class="ql-btn" onclick="selectCategory('bottle','bottle')">Bottle</button>
-              <button class="ql-btn" onclick="selectCategory('nap_start','nap start')">Nap</button>
+              <button class="ql-btn" onclick="selectCategory('nap_start','nap')">Nap</button>
               <button class="ql-btn" onclick="selectCategory('nap_end','nap end')">Nap End</button>
               <button class="ql-btn" onclick="selectCategory('bedtime','bedtime')">Bedtime</button>
               <button class="ql-btn" onclick="selectCategory('wake_up','wake up')">Wake Up</button>
@@ -324,31 +353,21 @@
               <button class="ql-btn" onclick="selectBottle(150)">150</button>
             </div>
           </div>
-          <div class="ql-row">
-            <div class="ql-label">When</div>
-            <div class="ql-time-row">
-              <button class="ql-time-btn selected" onclick="selectTime(0)">Now</button>
-              <button class="ql-time-btn" onclick="selectTime(15)">15m</button>
-              <button class="ql-time-btn" onclick="selectTime(30)">30m</button>
-              <button class="ql-time-btn" onclick="selectTime(45)">45m</button>
-              <button class="ql-time-btn" onclick="selectTime(60)">1h</button>
-              <button class="ql-time-btn" onclick="selectTime(75)">1h15</button>
-              <button class="ql-time-btn" onclick="selectTime(90)">1h30</button>
-              <button class="ql-time-btn" onclick="selectTime(105)">1h45</button>
-              <button class="ql-time-btn" onclick="selectTime(120)">2h</button>
-              <button class="ql-time-btn" onclick="selectTime(135)">2h15</button>
-              <button class="ql-time-btn" onclick="selectTime(150)">2h30</button>
-              <button class="ql-time-btn" onclick="selectTime(165)">2h45</button>
-              <button class="ql-time-btn" onclick="selectTime(180)">3h</button>
-              <button class="ql-time-btn" onclick="selectTime(195)">3h15</button>
-              <button class="ql-time-btn" onclick="selectTime(210)">3h30</button>
-              <button class="ql-time-btn" onclick="selectTime(225)">3h45</button>
-              <button class="ql-time-btn" onclick="selectTime(240)">4h</button>
-              <button class="ql-time-btn" onclick="selectTime(255)">4h15</button>
-              <button class="ql-time-btn" onclick="selectTime(270)">4h30</button>
-              <button class="ql-time-btn" onclick="selectTime(285)">4h45</button>
-              <button class="ql-time-btn" onclick="selectTime(300)">5h</button>
+          <div class="ql-row" id="qlWhenRow">
+            <div class="ql-label" id="qlWhenLabel">When</div>
+            <div class="ql-date-row">
+              <button class="ql-date-btn selected" id="qlDateToday" onclick="selectDate(this,'today')">Today</button>
+              <button class="ql-date-btn" id="qlDateYesterday" onclick="selectDate(this,'yesterday')">Yesterday</button>
             </div>
+            <input type="time" id="qlTimeInput" class="ql-time-input" />
+          </div>
+          <div class="ql-row ql-detail-row" id="qlEndTimeRow">
+            <div class="ql-label">End</div>
+            <div class="ql-date-row">
+              <button class="ql-date-btn selected" id="qlEndDateToday" onclick="selectEndDate(this,'today')">Today</button>
+              <button class="ql-date-btn" id="qlEndDateYesterday" onclick="selectEndDate(this,'yesterday')">Yesterday</button>
+            </div>
+            <input type="time" id="qlEndTimeInput" class="ql-time-input" />
           </div>
           <button class="ql-submit" id="qlSubmit" disabled onclick="submitQuickLog()">Select an event to log</button>
           <div class="ql-status" id="qlStatus"></div>
@@ -440,8 +459,11 @@
   var lastServerFetch = 0;
   var pollFailCount = 0;
   var qlAction = '';
-  var qlMinutesAgo = 0;
   var qlLabel = '';
+  var qlDate = 'today';
+  var qlEndDate = 'today';
+  var liveSleepState = { active: false, type: '', sessionStart: '', elapsedSeconds: 0 };
+  var liveSleepElapsed = 0;
 
   // ============================================================
   // API CALLS — use fetch() instead of google.script.run
@@ -482,11 +504,18 @@
     var ampm = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
     return 'Updated ' + months[d.getMonth()] + ' ' + d.getDate() + ', ' + h + ':' + m + ':' + s + ' ' + ampm;
   }
-  function formatAgo(minutes) {
-    if (minutes === 0) return '';
-    if (minutes < 60) return ' (' + minutes + 'm ago)';
-    var h = Math.floor(minutes / 60); var m = minutes % 60;
-    return m > 0 ? ' (' + h + 'h' + m + 'm ago)' : ' (' + h + 'h ago)';
+  function currentTimeStr() {
+    var now = new Date();
+    return String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  }
+
+  function buildTimestamp(dateKey, timeStr) {
+    if (!timeStr) return null;
+    var d = new Date();
+    if (dateKey === 'yesterday') d.setDate(d.getDate() - 1);
+    var parts = timeStr.split(':');
+    d.setHours(parseInt(parts[0]), parseInt(parts[1]), 0, 0);
+    return d.toISOString();
   }
 
   // ============================================================
@@ -561,6 +590,51 @@
   }
 
   // ============================================================
+  // SLEEP COUNTER
+  // ============================================================
+  function updateSleepDisplay() {
+    var card = document.getElementById('sleepCard');
+    var content = document.getElementById('sleepContent');
+    var startRow = document.getElementById('scStartRow');
+    var endRow = document.getElementById('scEndRow');
+    var endBtn = document.getElementById('scEnd');
+    if (!liveSleepState.active) {
+      card.className = 'card sleep-card';
+      content.innerHTML = '<div class="no-session">No active sleep session</div>';
+      startRow.style.display = 'flex'; endRow.style.display = 'none';
+      return;
+    }
+    var elapsed = liveSleepElapsed + (Date.now() - lastServerFetch) / 1000;
+    var type = liveSleepState.type;
+    var startStr = liveSleepState.sessionStart ? formatTimeOnly(liveSleepState.sessionStart) : '';
+    card.className = 'card sleep-card ' + (type === 'nap' ? 'nap-active' : 'bedtime-active');
+    content.innerHTML =
+      '<span class="status-badge ' + (type === 'nap' ? 'nap-badge' : 'bedtime-badge') + '">' +
+        '<span class="side-active"></span>' + (type === 'nap' ? 'Nap in progress' : 'Bedtime') +
+      '</span>' +
+      (startStr ? '<div style="font-size:12px;color:#8a8580;margin-bottom:12px;">Started at ' + startStr + '</div>' : '') +
+      '<div class="timer-row"><span class="timer-label">Elapsed</span><span class="timer-value total">' + formatTime(elapsed) + '</span></div>';
+    startRow.style.display = 'none'; endRow.style.display = 'flex';
+    endBtn.textContent = (type === 'nap' ? '✓ End Nap' : '✓ Wake Up');
+  }
+
+  function sleepAction(action) {
+    var statusEl = document.getElementById('scStatus');
+    statusEl.textContent = 'Logging...';
+    apiCall({ action: action })
+      .then(function(result) {
+        statusEl.textContent = result.message || 'Done';
+        setTimeout(function() { statusEl.textContent = ''; }, 2000);
+        fetchStatus();
+      })
+      .catch(function() { statusEl.textContent = 'Error — try again'; });
+  }
+
+  function endSleepAction() {
+    sleepAction(liveSleepState.type === 'nap' ? 'nap_end' : 'wake_up');
+  }
+
+  // ============================================================
   // RECENT LOG
   // ============================================================
   function renderRecentLog(entries) {
@@ -604,6 +678,11 @@
     else { updateNursingDisplay(); }
     renderRecentLog(data.recentLog);
     syncNursingButtons(data.nursing);
+    if (data.sleep) {
+      liveSleepState = data.sleep;
+      liveSleepElapsed = data.sleep.elapsedSeconds || 0;
+      updateSleepDisplay();
+    }
   }
 
   function fetchStatus() {
@@ -623,49 +702,82 @@
   // QUICK LOG
   // ============================================================
   function clearSelected(containerId) {
-    document.getElementById(containerId).querySelectorAll('.ql-btn,.ql-time-btn').forEach(function(b) { b.classList.remove('selected'); });
+    document.getElementById(containerId).querySelectorAll('.ql-btn').forEach(function(b) { b.classList.remove('selected'); });
+  }
+  function selectDate(btn, day) {
+    document.querySelectorAll('#qlWhenRow .ql-date-btn').forEach(function(b) { b.classList.remove('selected'); });
+    btn.classList.add('selected'); qlDate = day;
+  }
+  function selectEndDate(btn, day) {
+    document.querySelectorAll('#qlEndTimeRow .ql-date-btn').forEach(function(b) { b.classList.remove('selected'); });
+    btn.classList.add('selected'); qlEndDate = day;
   }
   function selectCategory(action, label) {
     clearSelected('qlCategory'); event.target.classList.add('selected');
     var bottleRow = document.getElementById('qlBottleRow');
+    var endTimeRow = document.getElementById('qlEndTimeRow');
+    var whenLabel = document.getElementById('qlWhenLabel');
+    var isSleepStart = (action === 'nap_start' || action === 'bedtime');
+    qlDate = 'today'; qlEndDate = 'today';
+    document.getElementById('qlDateToday').classList.add('selected');
+    document.getElementById('qlDateYesterday').classList.remove('selected');
+    document.getElementById('qlEndDateToday').classList.add('selected');
+    document.getElementById('qlEndDateYesterday').classList.remove('selected');
+    document.getElementById('qlEndTimeInput').value = '';
+    document.getElementById('qlTimeInput').value = currentTimeStr();
     if (action === 'bottle') {
-      bottleRow.classList.add('visible'); qlAction = ''; qlLabel = '';
+      bottleRow.classList.add('visible'); endTimeRow.classList.remove('visible');
+      whenLabel.textContent = 'When'; qlAction = ''; qlLabel = '';
       document.getElementById('qlSubmit').disabled = true;
       document.getElementById('qlSubmit').textContent = 'Select bottle amount';
     } else {
       bottleRow.classList.remove('visible'); qlAction = action; qlLabel = label;
+      endTimeRow.classList[isSleepStart ? 'add' : 'remove']('visible');
+      whenLabel.textContent = isSleepStart ? 'Start' : 'When';
       document.getElementById('qlSubmit').disabled = false;
-      document.getElementById('qlSubmit').textContent = 'Log ' + label + formatAgo(qlMinutesAgo);
+      document.getElementById('qlSubmit').textContent = 'Log ' + label;
     }
   }
   function selectBottle(ml) {
     clearSelected('qlBottle'); event.target.classList.add('selected');
     qlAction = 'bottle_' + ml; qlLabel = 'bottle ' + ml + ' mL';
     document.getElementById('qlSubmit').disabled = false;
-    document.getElementById('qlSubmit').textContent = 'Log ' + qlLabel + formatAgo(qlMinutesAgo);
-  }
-  function selectTime(minutes) {
-    document.querySelectorAll('.ql-time-btn').forEach(function(b) { b.classList.remove('selected'); });
-    event.target.classList.add('selected'); qlMinutesAgo = minutes;
-    if (qlAction) document.getElementById('qlSubmit').textContent = 'Log ' + qlLabel + formatAgo(minutes);
+    document.getElementById('qlSubmit').textContent = 'Log ' + qlLabel;
   }
   function submitQuickLog() {
     if (!qlAction) return;
     var btn = document.getElementById('qlSubmit'); var status = document.getElementById('qlStatus');
+    var timeVal = document.getElementById('qlTimeInput').value;
+    if (!timeVal) { status.textContent = 'Please enter a time'; status.style.color = '#c0392b'; return; }
+    var startISO = buildTimestamp(qlDate, timeVal);
+    var isSleepStart = (qlAction === 'nap_start' || qlAction === 'bedtime');
+    var endISO = null;
+    if (isSleepStart) {
+      var endVal = document.getElementById('qlEndTimeInput').value;
+      if (endVal) endISO = buildTimestamp(qlEndDate, endVal);
+    }
+    var params;
+    if (isSleepStart && endISO) {
+      params = { action: 'sleep_range', sleepType: qlAction === 'nap_start' ? 'nap' : 'bedtime', startTime: startISO, endTime: endISO };
+    } else {
+      params = { action: qlAction, time: startISO };
+    }
     btn.disabled = true; btn.textContent = 'Logging...';
-    apiCall({ action: qlAction, ago: qlMinutesAgo })
+    apiCall(params)
       .then(function(result) {
+        if (result.status === 'error') throw new Error(result.message);
         status.textContent = 'Logged: ' + (result.message || qlLabel);
         status.style.color = '#4a8c6f';
-        btn.textContent = 'Select an event to log';
+        btn.textContent = 'Select an event to log'; btn.disabled = true;
         clearSelected('qlCategory'); clearSelected('qlBottle');
         document.getElementById('qlBottleRow').classList.remove('visible');
+        document.getElementById('qlEndTimeRow').classList.remove('visible');
         qlAction = ''; qlLabel = '';
         setTimeout(fetchStatus, 1000);
         setTimeout(function() { status.textContent = ''; }, 3000);
       })
-      .catch(function() {
-        status.textContent = 'Error — try again'; status.style.color = '#c0392b';
+      .catch(function(err) {
+        status.textContent = (err && err.message) || 'Error — try again'; status.style.color = '#c0392b';
         btn.disabled = false; btn.textContent = 'Log ' + qlLabel;
       });
   }
@@ -1208,9 +1320,10 @@
   // ============================================================
   // INIT
   // ============================================================
+  document.getElementById('qlTimeInput').value = currentTimeStr();
   fetchStatus();
   setInterval(fetchStatus, 10000);
-  setInterval(updateNursingDisplay, 1000);
+  setInterval(function() { updateNursingDisplay(); updateSleepDisplay(); }, 1000);
 </script>
 </body>
 </html>
