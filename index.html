@@ -65,7 +65,9 @@
     .log-category.bottle { color: #3a7ca5; }
     .log-category.nap { color: #c27b3a; }
     .log-category.bedtime { color: #6b5b8a; }
-    .log-detail { flex: 1; text-align: center; color: #6b6560; padding: 0 6px; }
+    .log-category.note { color: #5a8a6e; }
+    .log-detail { flex: 1; text-align: center; color: #6b6560; padding: 0 6px; min-width: 0; }
+    .log-detail-note { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .log-date { color: #8a8580; font-size: 12px; text-align: right; min-width: 54px; }
     .log-time { color: #8a8580; font-size: 13px; text-align: right; min-width: 110px; }
 
@@ -123,6 +125,10 @@
     .ql-date-btn { padding: 5px 14px; border-radius: 8px; border: 1px solid #ddd; background: #f8f7f5; font-size: 12px; color: #4a4540; cursor: pointer; transition: all 0.15s; }
     .ql-date-btn.selected { background: #5c4b6e; color: white; border-color: #5c4b6e; }
     .ql-time-input { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 15px; color: #2d2a26; background: #faf9f7; }
+    .ql-note-input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #ddd; font-size: 14px; font-family: inherit; resize: vertical; min-height: 80px; background: #faf9f7; color: #2d2a26; box-sizing: border-box; }
+    .ql-note-mic-row { display: flex; gap: 8px; margin-top: 6px; }
+    .ql-note-mic-btn { flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid #ddd; background: #f8f7f5; font-size: 12px; color: #4a4540; cursor: pointer; }
+    .ql-note-mic-btn.listening { background: #c0392b; color: white; border-color: #c0392b; }
 
     /* Bottom sections */
     .bottom-sections { flex-shrink: 0; margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
@@ -333,6 +339,15 @@
               <button class="ql-btn" onclick="selectCategory('nap_end','nap end')">Nap End</button>
               <button class="ql-btn" onclick="selectCategory('bedtime','bedtime')">Bedtime</button>
               <button class="ql-btn" onclick="selectCategory('wake_up','wake up')">Wake Up</button>
+              <button class="ql-btn" onclick="selectCategory('note','note')">Notes</button>
+            </div>
+          </div>
+          <div class="ql-row ql-detail-row" id="qlNoteRow">
+            <div class="ql-label">Note</div>
+            <textarea id="qlNoteInput" class="ql-note-input" placeholder="Type your note here..."></textarea>
+            <div class="ql-note-mic-row">
+              <button class="ql-note-mic-btn" id="qlNoteMicEN" onclick="startNoteDictation('en-US','qlNoteMicEN')">&#127482;&#127480; Dictate (EN)</button>
+              <button class="ql-note-mic-btn" id="qlNoteMicZH" onclick="startNoteDictation('zh-CN','qlNoteMicZH')">&#127464;&#127475; 普通话</button>
             </div>
           </div>
           <div class="ql-row ql-detail-row" id="qlBottleRow">
@@ -590,6 +605,40 @@
   }
 
   // ============================================================
+  // NOTE DICTATION
+  // ============================================================
+  var noteMicActive = false;
+  var noteMicRec = null;
+  var noteMicBtnId = null;
+
+  function startNoteDictation(lang, btnId) {
+    if (noteMicActive) {
+      if (noteMicRec) { try { noteMicRec.stop(); } catch(e) {} }
+      return;
+    }
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('Voice not supported in this browser. Try Chrome.');
+      return;
+    }
+    noteMicBtnId = btnId;
+    var btn = document.getElementById(btnId);
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    noteMicRec = new SR();
+    noteMicRec.lang = lang; noteMicRec.interimResults = false; noteMicRec.maxAlternatives = 1;
+    noteMicActive = true; btn.classList.add('listening');
+    noteMicRec.onresult = function(ev) {
+      var t = ev.results[0][0].transcript;
+      var ta = document.getElementById('qlNoteInput');
+      ta.value = ta.value ? ta.value + ' ' + t : t;
+    };
+    noteMicRec.onend = noteMicRec.onerror = function() {
+      noteMicActive = false; noteMicRec = null;
+      if (noteMicBtnId) document.getElementById(noteMicBtnId).classList.remove('listening');
+    };
+    noteMicRec.start();
+  }
+
+  // ============================================================
   // SLEEP COUNTER
   // ============================================================
   function updateSleepDisplay() {
@@ -657,9 +706,10 @@
         dateDisplay = formatDateOnly(e.timestamp);
         timeDisplay = formatTimeOnly(e.timestamp);
       }
+      var detailClass = 'log-detail' + (e.category === 'note' ? ' log-detail-note' : '');
       return '<div class="log-entry">' +
         '<span class="log-category ' + e.category + '">' + e.category + '</span>' +
-        '<span class="log-detail">' + detail + '</span>' +
+        '<span class="' + detailClass + '">' + detail + '</span>' +
         '<span class="log-date">' + dateDisplay + '</span>' +
         '<span class="log-time">' + timeDisplay + '</span>' +
         '</div>';
@@ -716,6 +766,8 @@
     clearSelected('qlCategory'); event.target.classList.add('selected');
     var bottleRow = document.getElementById('qlBottleRow');
     var endTimeRow = document.getElementById('qlEndTimeRow');
+    var noteRow = document.getElementById('qlNoteRow');
+    var whenRow = document.getElementById('qlWhenRow');
     var whenLabel = document.getElementById('qlWhenLabel');
     var isSleepStart = (action === 'nap_start' || action === 'bedtime');
     qlDate = 'today'; qlEndDate = 'today';
@@ -725,13 +777,24 @@
     document.getElementById('qlEndDateYesterday').classList.remove('selected');
     document.getElementById('qlEndTimeInput').value = '';
     document.getElementById('qlTimeInput').value = currentTimeStr();
+    // Reset all detail rows
+    bottleRow.classList.remove('visible');
+    endTimeRow.classList.remove('visible');
+    noteRow.classList.remove('visible');
     if (action === 'bottle') {
-      bottleRow.classList.add('visible'); endTimeRow.classList.remove('visible');
+      bottleRow.classList.add('visible'); whenRow.style.display = '';
       whenLabel.textContent = 'When'; qlAction = ''; qlLabel = '';
       document.getElementById('qlSubmit').disabled = true;
       document.getElementById('qlSubmit').textContent = 'Select bottle amount';
+    } else if (action === 'note') {
+      noteRow.classList.add('visible'); whenRow.style.display = '';
+      whenLabel.textContent = 'When';
+      document.getElementById('qlNoteInput').value = '';
+      qlAction = 'note'; qlLabel = 'note';
+      document.getElementById('qlSubmit').disabled = false;
+      document.getElementById('qlSubmit').textContent = 'Save note';
     } else {
-      bottleRow.classList.remove('visible'); qlAction = action; qlLabel = label;
+      whenRow.style.display = ''; qlAction = action; qlLabel = label;
       endTimeRow.classList[isSleepStart ? 'add' : 'remove']('visible');
       whenLabel.textContent = isSleepStart ? 'Start' : 'When';
       document.getElementById('qlSubmit').disabled = false;
@@ -757,7 +820,11 @@
       if (endVal) endISO = buildTimestamp(qlEndDate, endVal);
     }
     var params;
-    if (isSleepStart && endISO) {
+    if (qlAction === 'note') {
+      var noteText = document.getElementById('qlNoteInput').value.trim();
+      if (!noteText) { status.textContent = 'Please enter a note'; status.style.color = '#c0392b'; return; }
+      params = { action: 'note', note: noteText, time: startISO };
+    } else if (isSleepStart && endISO) {
       params = { action: 'sleep_range', sleepType: qlAction === 'nap_start' ? 'nap' : 'bedtime', startTime: startISO, endTime: endISO };
     } else {
       params = { action: qlAction, time: startISO };
@@ -772,13 +839,15 @@
         clearSelected('qlCategory'); clearSelected('qlBottle');
         document.getElementById('qlBottleRow').classList.remove('visible');
         document.getElementById('qlEndTimeRow').classList.remove('visible');
+        document.getElementById('qlNoteRow').classList.remove('visible');
+        document.getElementById('qlNoteInput').value = '';
         qlAction = ''; qlLabel = '';
         setTimeout(fetchStatus, 1000);
         setTimeout(function() { status.textContent = ''; }, 3000);
       })
       .catch(function(err) {
         status.textContent = (err && err.message) || 'Error — try again'; status.style.color = '#c0392b';
-        btn.disabled = false; btn.textContent = 'Log ' + qlLabel;
+        btn.disabled = false; btn.textContent = qlAction === 'note' ? 'Save note' : 'Log ' + qlLabel;
       });
   }
 
