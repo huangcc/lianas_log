@@ -7,6 +7,7 @@
 
 const LOG_SHEET_NAME = 'Log';
 const SESSION_SHEET_NAME = 'LiveSession';
+const LIANA_DOB = '2026-05-16';
 
 // --- ENTRY POINT ---
 function doGet(e) {
@@ -894,50 +895,102 @@ function getTrendsData() {
     });
   }
 
-  return callClaudeForTrends(text, now);
-}
-
-function callClaudeForTrends(dataText, now) {
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const h = now.getHours(), m = now.getMinutes();
+  const nowH = now.getHours(), nowM = now.getMinutes();
   const nowStr = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear() +
-    ' at ' + (h%12||12) + ':' + String(m).padStart(2,'0') + ' ' + (h>=12?'PM':'AM');
+    ' at ' + (nowH%12||12) + ':' + String(nowM).padStart(2,'0') + ' ' + (nowH>=12?'PM':'AM');
+
+  const dob = new Date(LIANA_DOB);
+  const ageMs = now.getTime() - dob.getTime();
+  const ageWeeks = Math.floor(ageMs / (7 * 24 * 60 * 60 * 1000));
+  const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
 
   const systemPrompt =
-    "You are analyzing baby tracking data for a newborn named Liana.\n\n" +
-    "Report only what happened, not what it means relative to any standard. No comparisons to developmental norms, no language like \"should\" or \"typically.\" Just: here's what the data shows, here are the notes, here's what co-occurred.\n\n" +
-    "Structure your response in exactly two sections:\n" +
-    "**5-Day Patterns**\n" +
-    "What patterns appear across the last 5 days: feeding frequency and amounts, diaper counts per day, sleep timing and duration, any recurring notes or co-occurrences.\n\n" +
-    "**Last 24 Hours**\n" +
-    "What specifically happened in the last 24 hours. Note any events that occurred close together or any notes logged near other events.\n\n" +
-    "Be concise. Use bullet points. Do not add reassurances, advice, or interpretation beyond what the data directly shows.";
+    "You are analyzing baby tracking data for Liana (DOB May 16, 2026) and providing sleep guidance.\n" +
+    "Current date/time: " + nowStr + ". Liana's age: " + ageWeeks + " weeks (" + ageDays + " days).\n\n" +
+    "Write your response in EXACTLY two sections, using these exact markdown headers:\n\n" +
+    "## Trends\n\n" +
+    "Report only what happened. No developmental norms, no language like 'should' or 'typically'.\n" +
+    "Just what the data shows, what the notes say, what co-occurred.\n" +
+    "Use **5-Day Patterns** and **Last 24 Hours** as sub-headers with bullet points.\n\n" +
+    "## Sleep Advice\n\n" +
+    "Apply Marc Weissbluth's method (Healthy Sleep Habits, Happy Child) calibrated to " + ageWeeks + " weeks:\n" +
+    "- Watch for drowsy cues (eye rubbing, yawning, glazed stare) and put down before overtired\n" +
+    "- Overtiredness causes cortisol and makes sleep harder to initiate\n" +
+    "- 0–6 weeks: wake windows ~45–60 min; 5–7 short naps; bedtime often late (9–11 PM)\n" +
+    "- 6–12 weeks: wake windows ~1–1.5 hours; first morning nap becomes predictable; fussiness peaks ~6 wks then eases; bedtime begins moving earlier\n" +
+    "- 3–4 months: wake windows ~1.5–2 hours; bedtime consolidates toward 6–8 PM\n" +
+    "- Morning nap is most restorative — protect it first\n" +
+    "- No formal sleep training before 4–6 months; focus on drowsy-but-awake\n" +
+    "Reference specific patterns from today's data. Be concrete about timing.";
 
-  const payload = {
-    model: "claude-sonnet-4-6",
-    max_tokens: 900,
-    system: systemPrompt,
-    messages: [{ role: "user", content: "Current time: " + nowStr + "\n\n" + dataText }]
+  const result = claudeCall(systemPrompt, 'Current time: ' + nowStr + '\n\n' + text, 1500);
+  if (result.status === 'error') {
+    const errMsg = 'API Error: ' + result.message;
+    return { status: 'ok', summary: errMsg, sleepAdvice: errMsg, generatedAt: new Date().toISOString() };
+  }
+
+  const fullText = result.text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Find the Sleep Advice section with progressively looser patterns
+  let sepIdx = -1;
+  let sepLen = 0;
+  const pats = [
+    /\n#{1,3}[^\n]*sleep advice[^\n]*\n/i,
+    /\n\*{1,2}[^\n]*sleep advice[^\n]*\n/i,
+    /\nsleep advice[^\n]*\n/i
+  ];
+  for (let pi = 0; pi < pats.length; pi++) {
+    const m = fullText.match(pats[pi]);
+    if (m) { sepIdx = m.index; sepLen = m[0].length; break; }
+  }
+
+  const trendsRaw = sepIdx >= 0 ? fullText.substring(0, sepIdx).trim() : fullText;
+  const summary = trendsRaw.replace(/^#{1,3}[^\n]*trends[^\n]*\n?/i, '').trim();
+  const sleepAdvice = sepIdx >= 0 ? fullText.substring(sepIdx + sepLen).trim() : '';
+
+  // If parsing found no Sleep Advice section, surface full text for diagnosis
+  const sleepContent = sleepAdvice || '[Sleep Advice section not found in response]\n\nFull Claude output:\n\n' + fullText;
+
+  return {
+    status: 'ok',
+    summary: summary,
+    sleepAdvice: sleepContent,
+    generatedAt: new Date().toISOString()
   };
+}
+
+function claudeCall(systemPrompt, userContent, maxTokens) {
+  const key = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!key) return { status: 'error', message: 'ANTHROPIC_API_KEY not set in Script Properties' };
 
   const options = {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      "x-api-key": PropertiesService.getScriptProperties().getProperty("ANTHROPIC_API_KEY"),
-      "anthropic-version": "2023-06-01"
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01'
     },
-    payload: JSON.stringify(payload),
+    payload: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }]
+    }),
     muteHttpExceptions: true
   };
 
+  let rawText = '';
   try {
-    const response = UrlFetchApp.fetch("https://api.anthropic.com/v1/messages", options);
-    const json = JSON.parse(response.getContentText());
-    if (json.error) return { status: 'error', message: json.error.message };
-    return { status: 'ok', summary: json.content[0].text, generatedAt: new Date().toISOString() };
+    const response = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', options);
+    rawText = response.getContentText();
+    const json = JSON.parse(rawText);
+    if (json.error) return { status: 'error', message: json.error.type + ': ' + json.error.message };
+    if (!json.content || !json.content.length) return { status: 'error', message: 'API returned empty content array. Raw: ' + rawText.substring(0, 300) };
+    const text = json.content[0].text;
+    if (text === undefined || text === null) return { status: 'error', message: 'content[0].text missing. Raw: ' + rawText.substring(0, 300) };
+    return { status: 'ok', text: String(text) };
   } catch(err) {
-    return { status: 'error', message: 'Failed to generate trends: ' + err.toString() };
+    return { status: 'error', message: err.toString() + ' | Raw response: ' + rawText.substring(0, 300) };
   }
 }
 

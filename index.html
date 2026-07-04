@@ -466,13 +466,21 @@
       <div class="report-card">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:4px;">
           <div class="report-title">5-Day Trends</div>
-          <button class="trends-refresh-btn" id="trendsRefreshBtn" onclick="loadTrends()">&#8635; Refresh</button>
+          <button class="trends-refresh-btn" id="trendsRefreshBtn" onclick="loadTrends()">&#8635; Refresh both</button>
         </div>
         <div class="report-subtitle">Last 5 days of data — objective summary, no norms or comparisons</div>
         <div id="trendsContent" style="margin-top:16px;">
           <div class="loading-reports">Switch to this tab to load...</div>
         </div>
         <div id="trendsTimestamp" style="font-size:11px; color:#b0aba5; margin-top:14px;"></div>
+      </div>
+
+      <div class="report-card">
+        <div class="report-title">Sleep Advice</div>
+        <div class="report-subtitle">Weissbluth method · tailored to Liana's age and today's data</div>
+        <div id="sleepAdviceContent" style="margin-top:16px;">
+          <div class="loading-reports">Switch to this tab to load...</div>
+        </div>
       </div>
     </div>
   </div><!-- end tab-advice -->
@@ -1005,35 +1013,45 @@
   // TRENDS
   // ============================================================
   function loadTrends() {
-    var content = document.getElementById('trendsContent');
+    var trendsContent = document.getElementById('trendsContent');
+    var sleepContent = document.getElementById('sleepAdviceContent');
     var btn = document.getElementById('trendsRefreshBtn');
     var ts = document.getElementById('trendsTimestamp');
-    content.innerHTML = '<div class="loading-reports">Analyzing data… (this takes a few seconds)</div>';
+    var loading = '<div class="loading-reports">Analyzing data… (this takes a few seconds)</div>';
+    trendsContent.innerHTML = loading;
+    sleepContent.innerHTML = loading;
     btn.disabled = true;
-    btn.textContent = 'Analyzing…';
+    btn.innerHTML = 'Analyzing…';
     ts.textContent = '';
     apiCall({ action: 'trends' })
       .then(function(data) {
         trendsLoaded = true;
         btn.disabled = false;
-        btn.innerHTML = '&#8635; Refresh';
+        btn.innerHTML = '&#8635; Refresh both';
         if (data.status === 'error') {
-          content.innerHTML = '<div style="color:#c0392b;font-size:14px;">Error: ' + escapeHtml(data.message || 'Failed to load trends') + '</div>';
+          var err = '<div style="color:#c0392b;font-size:14px;">Error: ' + escapeHtml(data.message || 'Failed to load') + '</div>';
+          trendsContent.innerHTML = err;
+          sleepContent.innerHTML = err;
           return;
         }
-        content.innerHTML = '<div class="trends-body">' + renderTrendsMarkdown(data.summary || '') + '</div>';
+        trendsContent.innerHTML = '<div class="trends-body">' + renderTrendsMarkdown(data.summary || '') + '</div>';
+        sleepContent.innerHTML = data.sleepAdvice
+          ? '<div class="trends-body">' + renderTrendsMarkdown(data.sleepAdvice) + '</div>'
+          : '<div style="color:#c0392b;font-size:14px;">No response from API. Check that ANTHROPIC_API_KEY is set in Apps Script &gt; Project Settings &gt; Script Properties.</div>';
         if (data.generatedAt) {
           var d = new Date(data.generatedAt);
           var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
           var h = d.getHours(), mn = d.getMinutes();
-          ts.textContent = 'Generated ' + months[d.getMonth()] + ' ' + d.getDate() + ' at ' + (h%12||12) + ':' + String(mn).padStart(2,'0') + ' ' + (h>=12?'PM':'AM') + ' · AI analysis of raw data only';
+          ts.textContent = 'Generated ' + months[d.getMonth()] + ' ' + d.getDate() + ' at ' + (h%12||12) + ':' + String(mn).padStart(2,'0') + ' ' + (h>=12?'PM':'AM');
         }
       })
       .catch(function() {
         trendsLoaded = false;
         btn.disabled = false;
-        btn.innerHTML = '&#8635; Refresh';
-        content.innerHTML = '<div style="color:#c0392b;font-size:14px;">Error loading trends. Check your connection and try again.</div>';
+        btn.innerHTML = '&#8635; Refresh both';
+        var err = '<div style="color:#c0392b;font-size:14px;">Error loading. Check your connection and try again.</div>';
+        trendsContent.innerHTML = err;
+        sleepContent.innerHTML = err;
       });
   }
 
