@@ -25,6 +25,8 @@ function doGet(e) {
   } else if (action === 'sleep_range') {
     const sleepType = (e.parameter.sleepType || '').toLowerCase();
     result = handleSleepRange(sleepType, e.parameter.startTime || '', e.parameter.endTime || '');
+  } else if (action === 'note') {
+    result = handleNote(e.parameter.note || '', ago, timeParam);
   } else if (action) {
     result = processAction(action, ago, timeParam);
   } else {
@@ -54,6 +56,8 @@ function doPost(e) {
   } else if (action === 'sleep_range') {
     const sleepType = (body.sleepType || e.parameter.sleepType || '').toLowerCase();
     result = handleSleepRange(sleepType, body.startTime || e.parameter.startTime || '', body.endTime || e.parameter.endTime || '');
+  } else if (action === 'note') {
+    result = handleNote(body.note || e.parameter.note || '', ago, timeParam);
   } else if (action) {
     result = processAction(action, ago, timeParam);
   } else {
@@ -290,6 +294,22 @@ function handleDone(now) {
   ]);
   clearSession();
   return { status: 'ok', message: 'Nursing done. Total: ' + totalMin + ' min (L: ' + leftMin + ', R: ' + rightMin + ')' };
+}
+
+// --- NOTES ---
+function handleNote(text, agoMinutes, timeParam) {
+  if (!text.trim()) return { status: 'error', message: 'Note text is required' };
+  var now;
+  if (timeParam) {
+    now = new Date(timeParam);
+    if (isNaN(now.getTime())) now = new Date();
+  } else {
+    now = new Date();
+    if (agoMinutes && agoMinutes > 0) now.setMinutes(now.getMinutes() - agoMinutes);
+  }
+  const sheet = getOrCreateLogSheet();
+  sheet.appendRow([now, 'note', text.trim(), '', '', '', '', '']);
+  return { status: 'ok', message: 'Note saved' };
 }
 
 // --- SLEEP LOGIC ---
