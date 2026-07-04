@@ -27,6 +27,8 @@ function doGet(e) {
     result = handleSleepRange(sleepType, e.parameter.startTime || '', e.parameter.endTime || '');
   } else if (action === 'note') {
     result = handleNote(e.parameter.note || '', ago, timeParam);
+  } else if (action === 'trends') {
+    result = getTrendsData();
   } else if (action) {
     result = processAction(action, ago, timeParam);
   } else {
@@ -58,6 +60,8 @@ function doPost(e) {
     result = handleSleepRange(sleepType, body.startTime || e.parameter.startTime || '', body.endTime || e.parameter.endTime || '');
   } else if (action === 'note') {
     result = handleNote(body.note || e.parameter.note || '', ago, timeParam);
+  } else if (action === 'trends') {
+    result = getTrendsData();
   } else if (action) {
     result = processAction(action, ago, timeParam);
   } else {
@@ -771,6 +775,169 @@ function parseVoiceCommand(transcript) {
     return parsed;
   } catch(err) {
     return { action: null, agoMinutes: 0, confirmation: null, error: "Something went wrong. Please try again." };
+  }
+}
+
+
+// --- TRENDS DATA (for Advice tab) ---
+function getTrendsData() {
+  const sheet = getOrCreateLogSheet();
+  const allData = sheet.getDataRange().getValues();
+  const rows = allData.slice(1);
+  const now = new Date();
+  const fiveDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function fmtTime(d) {
+    const h = d.getHours(), m = d.getMinutes();
+    return (h % 12 || 12) + ':' + String(m).padStart(2,'0') + ' ' + (h >= 12 ? 'PM' : 'AM');
+  }
+  function fmtDate(d) { return months[d.getMonth()] + ' ' + d.getDate(); }
+
+  const recentRows = rows.filter(r => r[0] && new Date(r[0]) >= fiveDaysAgo);
+  if (recentRows.length === 0) {
+    return { status: 'ok', summary: 'No data found in the last 5 days.', generatedAt: now.toISOString() };
+  }
+
+  const daySet = new Set();
+  recentRows.forEach(r => { if (r[0]) daySet.add(new Date(r[0]).toDateString()); });
+  const sortedDays = Array.from(daySet).sort((a, b) => new Date(a) - new Date(b));
+
+  const dayData = {};
+  sortedDays.forEach(day => {
+    dayData[day] = { diapers: {pee:0, poop:0, mixed:0}, bottles: [], nursing: [], naps: [], bedtimes: [], notes: [] };
+  });
+
+  recentRows.forEach(r => {
+    if (!r[0]) return;
+    const d = new Date(r[0]);
+    const category = (r[1]||'').toLowerCase();
+    const detail = String(r[2]||'');
+
+    if (category === 'diaper') {
+      const det = detail.toLowerCase();
+      const day = d.toDateString();
+      if (!dayData[day]) return;
+      if (det === 'pee') dayData[day].diapers.pee++;
+      else if (det === 'poop') dayData[day].diapers.poop++;
+      else if (det.includes('mixed')) dayData[day].diapers.mixed++;
+    } else if (category === 'bottle') {
+      const day = d.toDateString();
+      if (!dayData[day]) return;
+      const ml = parseInt((detail.match(/(\d+)/)||[])[1]) || 0;
+      dayData[day].bottles.push(fmtTime(d) + ': ' + ml + 'mL');
+    } else if (category === 'nursing' && r[3]) {
+      const startTime = new Date(r[3]);
+      const day = startTime.toDateString();
+      if (!dayData[day]) return;
+      const totalMin = parseFloat(r[4]) || 0;
+      const leftMin = parseFloat(r[5]) || 0;
+      const rightMin = parseFloat(r[6]) || 0;
+      dayData[day].nursing.push(fmtTime(startTime) + '–' + fmtTime(d) + ' (' + totalMin + 'min, L:' + leftMin + ' R:' + rightMin + ')');
+    } else if (category === 'nap' && detail.toLowerCase() === 'end' && r[3]) {
+      const startTime = new Date(r[3]);
+      const day = startTime.toDateString();
+      if (!dayData[day]) return;
+      dayData[day].naps.push(fmtTime(startTime) + '–' + fmtTime(d) + ' (' + (r[4]||'?') + ')');
+    } else if (category === 'bedtime' && detail.toLowerCase() === 'end' && r[3]) {
+      const startTime = new Date(r[3]);
+      const day = startTime.toDateString();
+      if (!dayData[day]) return;
+      dayData[day].bedtimes.push(fmtTime(startTime) + '–' + fmtTime(d) + ' (' + (r[4]||'?') + ')');
+    } else if (category === 'note') {
+      const day = d.toDateString();
+      if (!dayData[day]) return;
+      dayData[day].notes.push(fmtTime(d) + ': ' + detail);
+    }
+  });
+
+  let text = '=== LAST 5 DAYS ===\n\n';
+  sortedDays.forEach(day => {
+    const dd = dayData[day];
+    text += '--- ' + fmtDate(new Date(day)) + ' ---\n';
+    const totalD = dd.diapers.pee + dd.diapers.poop + dd.diapers.mixed;
+    if (totalD > 0) text += 'Diapers: ' + totalD + ' (pee:' + dd.diapers.pee + ' poop:' + dd.diapers.poop + ' mixed:' + dd.diapers.mixed + ')\n';
+    if (dd.bottles.length > 0) {
+      const totalMl = dd.bottles.reduce((s,b) => s + (parseInt((b.match(/(\d+)mL/)||[])[1])||0), 0);
+      text += 'Bottles: ' + dd.bottles.length + ' feeds, ' + totalMl + 'mL total (' + dd.bottles.join('; ') + ')\n';
+    }
+    if (dd.nursing.length > 0) text += 'Nursing: ' + dd.nursing.length + ' sessions (' + dd.nursing.join('; ') + ')\n';
+    if (dd.naps.length > 0) text += 'Naps: ' + dd.naps.join('; ') + '\n';
+    if (dd.bedtimes.length > 0) text += 'Bedtime: ' + dd.bedtimes.join('; ') + '\n';
+    if (dd.notes.length > 0) text += 'Notes:\n' + dd.notes.map(n => '  ' + n).join('\n') + '\n';
+    text += '\n';
+  });
+
+  text += '=== LAST 24 HOURS DETAILED TIMELINE ===\n';
+  const last24 = rows
+    .filter(r => r[0] && new Date(r[0]) >= oneDayAgo)
+    .sort((a, b) => new Date(a[0]) - new Date(b[0]));
+
+  if (last24.length === 0) {
+    text += 'No events in the last 24 hours.\n';
+  } else {
+    last24.forEach(r => {
+      const d = new Date(r[0]);
+      const category = (r[1]||'').toLowerCase();
+      const detail = String(r[2]||'');
+      let line = fmtDate(d) + ' ' + fmtTime(d) + ' — ';
+      if (category === 'nursing' && r[3]) {
+        const st = new Date(r[3]);
+        line += 'Nursing: ' + fmtTime(st) + '–' + fmtTime(d) + ', ' + (parseFloat(r[4])||0) + 'min (L:' + (parseFloat(r[5])||0) + ' R:' + (parseFloat(r[6])||0) + ')';
+      } else if ((category === 'nap' || category === 'bedtime') && detail.toLowerCase() === 'end' && r[3]) {
+        line += category + ' ended: started ' + fmtTime(new Date(r[3])) + ', duration ' + (r[4]||'?');
+      } else {
+        line += category + ': ' + detail;
+      }
+      text += line + '\n';
+    });
+  }
+
+  return callClaudeForTrends(text, now);
+}
+
+function callClaudeForTrends(dataText, now) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const h = now.getHours(), m = now.getMinutes();
+  const nowStr = months[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear() +
+    ' at ' + (h%12||12) + ':' + String(m).padStart(2,'0') + ' ' + (h>=12?'PM':'AM');
+
+  const systemPrompt =
+    "You are analyzing baby tracking data for a newborn named Liana.\n\n" +
+    "Report only what happened, not what it means relative to any standard. No comparisons to developmental norms, no language like \"should\" or \"typically.\" Just: here's what the data shows, here are the notes, here's what co-occurred.\n\n" +
+    "Structure your response in exactly two sections:\n" +
+    "**5-Day Patterns**\n" +
+    "What patterns appear across the last 5 days: feeding frequency and amounts, diaper counts per day, sleep timing and duration, any recurring notes or co-occurrences.\n\n" +
+    "**Last 24 Hours**\n" +
+    "What specifically happened in the last 24 hours. Note any events that occurred close together or any notes logged near other events.\n\n" +
+    "Be concise. Use bullet points. Do not add reassurances, advice, or interpretation beyond what the data directly shows.";
+
+  const payload = {
+    model: "claude-sonnet-4-6",
+    max_tokens: 900,
+    system: systemPrompt,
+    messages: [{ role: "user", content: "Current time: " + nowStr + "\n\n" + dataText }]
+  };
+
+  const options = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": PropertiesService.getScriptProperties().getProperty("ANTHROPIC_API_KEY"),
+      "anthropic-version": "2023-06-01"
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch("https://api.anthropic.com/v1/messages", options);
+    const json = JSON.parse(response.getContentText());
+    if (json.error) return { status: 'error', message: json.error.message };
+    return { status: 'ok', summary: json.content[0].text, generatedAt: new Date().toISOString() };
+  } catch(err) {
+    return { status: 'error', message: 'Failed to generate trends: ' + err.toString() };
   }
 }
 
