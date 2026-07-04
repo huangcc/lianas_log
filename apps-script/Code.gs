@@ -22,6 +22,9 @@ function doGet(e) {
     result = parseVoiceCommand(transcript);
   } else if (action === 'reports') {
     result = getReportsData();
+  } else if (action === 'sleep_range') {
+    const sleepType = (e.parameter.sleepType || '').toLowerCase();
+    result = handleSleepRange(sleepType, e.parameter.startTime || '', e.parameter.endTime || '');
   } else if (action) {
     result = processAction(action, ago, timeParam);
   } else {
@@ -48,6 +51,9 @@ function doPost(e) {
     result = parseVoiceCommand(transcript);
   } else if (action === 'reports') {
     result = getReportsData();
+  } else if (action === 'sleep_range') {
+    const sleepType = (body.sleepType || e.parameter.sleepType || '').toLowerCase();
+    result = handleSleepRange(sleepType, body.startTime || e.parameter.startTime || '', body.endTime || e.parameter.endTime || '');
   } else if (action) {
     result = processAction(action, ago, timeParam);
   } else {
@@ -143,6 +149,43 @@ function setSessionData(data) {
 function clearSession() {
   const sheet = getSessionSheet();
   for (let i = 2; i <= 10; i++) { sheet.getRange(i, 2).setValue(''); }
+}
+
+// --- SLEEP SESSION (LiveSession rows 11-13) ---
+function ensureSleepRows() {
+  const sheet = getSessionSheet();
+  const sleepKeys = ['sleep_active', 'sleep_type', 'sleep_start'];
+  sleepKeys.forEach((key, i) => {
+    const row = 11 + i;
+    if (!sheet.getRange(row, 1).getValue()) {
+      sheet.getRange(row, 1).setValue(key);
+      sheet.getRange(row, 2).setValue('');
+    }
+  });
+}
+
+function getSleepData() {
+  ensureSleepRows();
+  const sheet = getSessionSheet();
+  const data = {};
+  sheet.getRange('A11:B13').getValues().forEach(row => { if (row[0]) data[String(row[0])] = String(row[1]); });
+  return data;
+}
+
+function setSleepData(active, type, start) {
+  ensureSleepRows();
+  const sheet = getSessionSheet();
+  sheet.getRange(11, 2).setValue(active);
+  sheet.getRange(12, 2).setValue(type);
+  sheet.getRange(13, 2).setValue(start);
+}
+
+function clearSleepData() {
+  ensureSleepRows();
+  const sheet = getSessionSheet();
+  sheet.getRange(11, 2).setValue('');
+  sheet.getRange(12, 2).setValue('');
+  sheet.getRange(13, 2).setValue('');
 }
 
 function handleBreast(side, now) {
@@ -253,15 +296,22 @@ function handleDone(now) {
 function handleSleepStart(now, type) {
   const sheet = getOrCreateLogSheet();
   sheet.appendRow([now, type, 'start', '', '', '', '', '']);
+  setSleepData('true', type, now.toISOString());
   return { status: 'ok', message: type + ' started' };
 }
 
 function handleSleepEnd(now, type) {
   const sheet = getOrCreateLogSheet();
-  const data = sheet.getDataRange().getValues();
+  const sleepData = getSleepData();
   let startTime = null;
-  for (let i = data.length - 1; i >= 1; i--) {
-    if (data[i][1] === type && data[i][2] === 'start') { startTime = new Date(data[i][0]); break; }
+  if (sleepData.sleep_active === 'true' && sleepData.sleep_type === type && sleepData.sleep_start) {
+    startTime = new Date(sleepData.sleep_start);
+    clearSleepData();
+  } else {
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (data[i][1] === type && data[i][2] === 'start') { startTime = new Date(data[i][0]); break; }
+    }
   }
   let duration = '';
   if (startTime) {
@@ -272,6 +322,22 @@ function handleSleepEnd(now, type) {
   }
   sheet.appendRow([now, type, 'end', startTime || '', duration, '', '', '']);
   return { status: 'ok', message: type + ' ended' + (duration ? ' (' + duration + ')' : '') };
+}
+
+function handleSleepRange(type, startTimeStr, endTimeStr) {
+  if (!type || !startTimeStr || !endTimeStr) return { status: 'error', message: 'Missing type, startTime, or endTime' };
+  const startTime = new Date(startTimeStr);
+  const endTime = new Date(endTimeStr);
+  if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) return { status: 'error', message: 'Invalid time values' };
+  const diffMin = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+  if (diffMin < 0) return { status: 'error', message: 'End time must be after start time' };
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  const duration = hours > 0 ? hours + 'h ' + mins + 'm' : mins + 'm';
+  const sheet = getOrCreateLogSheet();
+  sheet.appendRow([startTime, type, 'start', '', '', '', '', '']);
+  sheet.appendRow([endTime, type, 'end', startTime, duration, '', '', '']);
+  return { status: 'ok', message: type + ' logged: ' + duration };
 }
 
 // --- LOG SHEET SETUP ---
@@ -308,12 +374,23 @@ function getStatusData() {
     startTime: row[3] ? new Date(row[3]).toISOString() : '',
     totalMin: row[4] || '', leftMin: row[5] || '', rightMin: row[6] || '', pauses: row[7] || ''
   })).reverse();
+  const sleepData = getSleepData();
+  const sleepElapsed = sleepData.sleep_active === 'true' && sleepData.sleep_start
+    ? Math.round((now.getTime() - new Date(sleepData.sleep_start).getTime()) / 1000)
+    : 0;
+
   return {
     nursing: {
       active: session.active === 'true', status: session.status || 'inactive',
       currentSide: session.current_side || '', leftSeconds: Math.round(leftSec),
       rightSeconds: Math.round(rightSec), totalSeconds: Math.round(leftSec + rightSec),
       pauseCount: parseFloat(session.pause_count) || 0, sessionStart: session.session_start || ''
+    },
+    sleep: {
+      active: sleepData.sleep_active === 'true',
+      type: sleepData.sleep_type || '',
+      sessionStart: sleepData.sleep_start || '',
+      elapsedSeconds: sleepElapsed
     },
     recentLog: recent, serverTime: now.toISOString()
   };
