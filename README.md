@@ -1,6 +1,6 @@
 # Liana's Log
 
-A baby tracking app for logging feeds, diapers, and sleep — built for hands-free voice input via Siri Shortcuts.
+A baby tracking app for logging feeds, diapers, and sleep — built for hands-free voice input via Siri Shortcuts. 
 
 ## What it does
 - Voice logging via Siri Shortcuts → Google Apps Script webhook
